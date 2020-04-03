@@ -167,3 +167,111 @@ class PARAMETERS():
             for sec_param in list(self.VARS_EX[param].keys()):
                 for VAR in list(self.VARS_EX[param][sec_param].keys()):
                     self.dict[param][sec_param][VAR] = self.VARS_EX[param][sec_param][VAR][0]
+
+
+        
+    def GET_ALL(self):
+        self.GET_OTHERS()
+        self.GET_DICT()
+        self.preprocess(split = 220)
+        self.DICT_TO_LIST()
+
+    def DICT_TO_LIST(self):
+        prev_out_ch = 0
+        self.LIST = list()
+        self.seq_len_left = self.OTHERS['windowlength']
+        for tt, key in enumerate(list(self.DICT.keys())):
+            if key == 'flatten':
+                self.LIST.append([key, ['nothing','nothing']])
+                prev_out_ch = prev_out_ch * self.seq_len_left
+            elif key != 'OTHERS':
+                for ttt, layer in enumerate(list(self.DICT[key].keys())):
+                    p_list = list()
+                    for tttt, param in enumerate(list(self.DICT[key][layer].keys())):
+                        if param not in ['dropout','batchnorm']:
+                            if param == 'KER':
+                                self.seq_len_left = self.seq_len_left - self.DICT[key][layer][param] + 1
+                            if tt is 0 and ttt is 0:
+                                if tttt is 0:
+                                    p_list.append(self.featuresize)       
+                                p_list.append(self.DICT[key][layer][param])
+                            else:
+                                if tttt is 0:
+                                    p_list.append(prev_out_ch)       
+                                p_list.append(self.DICT[key][layer][param])
+                                
+                    self.LIST.append([key, p_list])
+                    prev_out_ch = p_list[1]
+                    if 'batchnorm' in list(self.DICT[key][layer].keys()) and self.DICT[key][layer]['batchnorm']:
+                        self.LIST.append(['batchnorm',[prev_out_ch,True]])
+
+                    if 'dropout' in list(self.DICT[key][layer].keys()) and self.DICT[key][layer]['dropout'][0]:
+                        self.LIST.append(['dropout',[self.DICT[key][layer]['dropout'][1],False]])
+                
+        
+        
+    def preprocess(self,split):
+        data = pd.read_excel('clean.xlsx').dropna()
+        windowlength = self.OTHERS['windowlength']
+        outsize = self.OTHERS['out_size']
+        arr = np.asarray(data['sales'])
+        vv =pd.read_csv('vix.csv',sep=',')
+
+        vix = np.array(vv['Şimdi'])
+        for i in range(len(vix)):
+            vix[i] = float(vix[i].replace(',','.'))
+
+        dol =pd.read_csv('dollar.csv',sep=',')
+        dollars = np.array(dol['Şimdi'])
+        for i in range(len(dollars)):
+            dollars[i] = float(dollars[i].replace(',','.'))
+            
+            
+        res = STL(arr,period = self.OTHERS['period'] ,seasonal = 23 , trend = 25).fit()
+        observed = res.observed
+        a = np.concatenate([np.array(res.observed).reshape(res.observed.shape[0],1),np.array(res.seasonal).reshape(observed.shape[0],1),np.array(res.trend).reshape(observed.shape[0],1),np.array(res.resid).reshape(observed.shape[0],1).reshape(observed.shape[0],1),np.array(vix).reshape(observed.shape[0],1),np.array(dollars).reshape(observed.shape[0],1)],axis=1)
+        dataz = np.swapaxes(np.array([res.observed,res.seasonal,res.trend,res.resid,vix,dollars]),0,1)
+        train = dataz[:split]
+        test = dataz[split:]
+                
+        MAX_window = self.OTHERS['windowlength']
+        scaler = StandardScaler()
+        sclr = scaler.fit(train)
+        train =  scaler.transform(train)
+        test =  scaler.transform(test)
+        
+        self.scaler.fit(arr[:split].reshape(-1,1))
+        TR_OUT = np.asarray([[np.array(train[:,0])[i+k+windowlength] for i in range(outsize)] for k in range(split - outsize - MAX_window)])
+        for feat in range(train.shape[1]):
+            if feat == 0:
+                TR_INP = np.array([[[ np.array(train[:,feat])[i+k+MAX_window-windowlength] for i in  range(windowlength)] for t in range(1)] for k in range(split - outsize - MAX_window)])
+            else:
+                TR_new = np.array([[[ np.array(train[:,feat])[i+k+MAX_window-windowlength] for i in  range(windowlength)] for t in range(1)] for k in range(split - outsize - MAX_window)])
+                TR_INP = np.concatenate((TR_INP,TR_new),axis=1)
+
+        TST_OUT = np.asarray([[np.array(test[:,0])[i+k+windowlength] for i in range(outsize)] for k in range(len(arr) - split - outsize - windowlength)])
+        for feat in range(test.shape[1]):
+            if feat == 0:
+                TST_INP = np.array([[[ np.array(test[:,feat])[i+k+MAX_window-windowlength] for i in  range(windowlength)] for t in range(1)] for k in range(len(arr) - split - outsize - MAX_window)])
+            else:
+                TST_new = np.array([[[ np.array(test[:,feat])[i+k+MAX_window-windowlength] for i in  range(windowlength)] for t in range(1)] for k in range(len(arr) - split - outsize - MAX_window)])
+                TST_INP = np.concatenate((TST_INP,TST_new),axis=1)
+
+        #TR_INP = np.swapaxes(TR_INP,1,2)
+        #TST_INP = np.swapaxes(TST_INP,1,2)
+        self.pagez = test.shape[0]-outsize-windowlength
+        self.test_actual = self.scaler.inverse_transform(TST_OUT)
+        self.featuresize = TR_INP.shape[1]
+        
+        
+        TR_INP = torch.Tensor(TR_INP).to(device = cuda)
+        TST_INP = torch.Tensor(TST_INP).to(device = cuda)
+        TR_OUT = torch.Tensor(TR_OUT).to(device = cuda)
+        TST_OUT = torch.Tensor(TST_OUT).to(device = cuda)
+        
+        TRA_DSet = TensorDataset(TR_INP, TR_OUT)
+        VAL_DSet = TensorDataset(TST_INP, TST_OUT)
+        self.train_DL = DataLoader(TRA_DSet, batch_size=self.OTHERS['batchsize'])
+        self.val_DL = DataLoader(VAL_DSet, batch_size=self.OTHERS['batchsize']*2)
+        
+        
