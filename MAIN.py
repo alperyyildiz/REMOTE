@@ -67,6 +67,35 @@ class PARAMETERS():
                   '2': {'FIL':self.OTHERS['out_size']}
                   }
         }
+        
+        
+def SEARCH_SPACE(self):
+  space = {}
+  TO_CHNG = {'CON': {'1': {'KER': (2,14),
+                          'dropout': (0.2,0.8)},
+                    '2': {'KER': (2,13),
+                          'dropout': (0.2,0.8)}
+                    },
+            'DENSE': {'1':{ 'FIL': (32,256),
+                            'dropout':(0.2,0.6)}
+                      }
+            }
+  HYP_DICT ={}
+  d_count = 0
+  for TYPE in  list(TO_CHNG.keys()):
+    HYP_DICT_LAYER = {}
+    for layernum in list(TO_CHNG[TYPE].keys()):
+      HYP_DICT_PARAMS = {}
+      for PARAM in list(TO_CHNG[TYPE][layernum].keys()):
+        if PARAM == 'dropout':
+          d_count = d_count + 1
+          HYP_DICT_PARAMS[PARAM + str(d_count)] = hp.uniform(PARAM + str(d_count),TO_CHNG[TYPE][layernum][PARAM][0],TO_CHNG[TYPE][layernum][PARAM][1])
+        else:
+          HYP_DICT_PARAMS[PARAM + layernum] = hp.uniform(PARAM + layernum,TO_CHNG[TYPE][layernum][PARAM][0],TO_CHNG[TYPE][layernum][PARAM][1])
+      HYP_DICT_LAYER[layernum] =  HYP_DICT_PARAMS
+    HYP_DICT[TYPE] =  HYP_DICT_LAYER
+
+  self.space = hp.choice('paramz', [HYP_DICT])
 
     #CREATE SUBDIR OF ABOVE NAMED WITH 
     #EXPERIMENT DATE AND START TIME
@@ -420,6 +449,33 @@ def GET_Model(dictz):
           param_OBJ[TYPE][layernum][PARAMS] = dictz[TYPE][layernum][PARAMS]  
     
     model = Model(param_OBJ.LIST,param_OBJ.OTHERS, param_OBJ.scaler, param_OBJ.train_DL, param_OBJ.val_DL)
+    
+    
+    
+        
+def GET_Model(DD):
+    param_OBJ = PARAMETERS() 
+    param_OBJ.GET_ALL()
+
+    for PARAM in list(param_OBJ.keys()):
+      if PARAM in list(OTHER_PARAM_TO_CHANGE)
+      param_OBJ[]
+    param_OBJ.OTHERS  =  {
+                    'windowlength': 24,
+                    'out_size': 3,
+                    'period': 24,
+                    'lrate': 0.0005,
+                    'batchsize': 32,
+                    'epoch': 100
+                    }
+
+    for TYPE in  list(DD.keys()):
+      print(TYPE)
+      for layernum in list(DD[TYPE].keys()):
+        for PARAM in list(DD[TYPE][layernum].keys()):
+          param_OBJ[TYPE][layernum][PARAMS] = DD[TYPE][layernum][PARAMS]  
+    
+    model = Model(param_OBJ.LIST,param_OBJ.OTHERS, param_OBJ.scaler, param_OBJ.train_DL, param_OBJ.val_DL)
     model.to(device = cuda)
     model.optimizer = optim.Adam(model.parameters(),lr=param_OBJ.OTHERS['lrate'])
 
@@ -431,4 +487,49 @@ def GET_Model(dictz):
         'attachments':
             {'time_module': pickle.dumps(time.time)}
           }
+  
+  
+  
+    model.to(device = cuda)
+    model.optimizer = optim.Adam(model.parameters(),lr=param_OBJ.OTHERS['lrate'])
+
+    minloss = model.fit()
+    torch.cuda.empty_cache()
+    return {
+        'loss': minloss,
+        'status': STATUS_OK,
+        'attachments':
+            {'time_module': pickle.dumps(time.time)}
+          }
+  
+  
+  
+PARAM_TO_CHANGE = {'CONV': {
+        '1': {
+              'KER': (2,14),
+              'dropout': (0.2, 0.8),
+              'batchnorm': True
+             },
+
+        '2': { 
+              'KER': (2,11),
+              'dropout': (0.2, 0.8),
+              'batchnorm': True
+             }
+                   },
+
+
+        'DENSE': {
+
+        '1': {'FIL': (32,256),
+              'dropout' : (0.2,0.3)
+             },
+        '2': {'FIL':self.OTHERS['out_size']}
+        }
+}
+
+
+
+
+
 
