@@ -380,9 +380,6 @@ class Model(nn.Module, PARAMETERS):
             print(epoch, val_loss)
         return min_loss
       
-      
-      def my_imports(module_name):
-    globals()[module_name] = __import__(module_name)
 
 
 
