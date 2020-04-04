@@ -1,1 +1,2 @@
-!python IMPORT.py
+import os
+os.system('python IMPORT.py')
