@@ -307,12 +307,6 @@ print('PARAMETERS DEFINED !!!!')
 
 
 
-def my_imports(module_name):
-    globals()[module_name] = __import__(module_name)
-
-
-
-
 class Model(nn.Module, PARAMETERS):
     def __init__(self, LIST, OTHERS, SCLR, TRAIN, VAL):
         super().__init__()
