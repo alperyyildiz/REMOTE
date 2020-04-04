@@ -17,8 +17,6 @@ def fit(epochs, model, opt, train_dl, valid_dl):
     return min_loss
         
 def GET_Model(dictz):
-    ker1 = dictz['kernel_1']
-    ker2 = dictz['kernel_2']
     param_OBJ = PARAMETERS() 
     param_OBJ.GET_ALL()
     param_OBJ.OTHERS  =  {
@@ -30,30 +28,11 @@ def GET_Model(dictz):
                     'epoch': 100
                     }
 
-    param_OBJ.DICT = {'CONV': {
-                               '1': {'FIL': 128, 
-                                     'KER': ker1,
-                                     'dropout': [True, 0.5],
-                                    'batchnorm': True
-                                    },
- 
-                               '2': {'FIL': 64, 
-                                     'KER': ker2,
-                                     'dropout': [True, 0.2],
-                                     'batchnorm': True
-                                    }
-                                 },
-
-              'flatten': {'1': {'nofilter':0 , 'nonothing':0 }},
-
-              'DENSE': {
-
-                        '1': {'FIL': 48,
-                              'dropout' : [True,0.3]
-                             },
-                        '2': {'FIL':param_OBJ.OTHERS['out_size']}
-                       }
-                    }
+    for TYPE in  list(DD.keys()):
+      print(TYPE)
+      for layernum in list(DD[TYPE].keys()):
+        for PARAM in list(DD[TYPE][layernum].keys()):
+          param_OBJ[TYPE][layernum][PARAMS] = dictz[TYPE][layernum][PARAMS]  
     
     model = Model(param_OBJ.LIST,param_OBJ.OTHERS, param_OBJ.scaler, param_OBJ.train_DL, param_OBJ.val_DL)
     model.to(device = cuda)
