@@ -71,9 +71,9 @@ class PARAMETERS():
                             'windowlength': 24,
                             'out_size': 3,
                             'period': 24,
-                            'lrate': 0.0005,
-                            'batchsize': 32,
-                            'epoch': 100
+                            'lrate': 0.001,
+                            'batchsize': 16,
+                            'epoch': 1000
                             }
         return OTHERS
         
@@ -149,12 +149,12 @@ class PARAMETERS():
             PARAMS_TO_CHANGE = {'CONV': {
                                           '1': {
                                                 'KER': (2,14),
-                                                'dropout': (0.2, 0.8),
+                                                'dropout': (0.2, 0.6),
                                               },
 
                                           '2': { 
                                                 'KER': (2,11),
-                                                'dropout': (0.2, 0.8),
+                                                'dropout': (0.2, 0.6),
                                               }
                                                     },
                               'DENSE': {
@@ -185,12 +185,12 @@ class PARAMETERS():
         SAVE_DIR = '/storage/' + SAVE_DIR[1:]
         try: 
             os.mkdir(SAVE_DIR)
-            self.save_DIR = SAVE_DIR
+            self.SAVE_DIR = SAVE_DIR
         except:
             pass
 
         SAVE_DIR = SAVE_DIR + '/' +str(datetime.now())[:-10]
-        self.save_DIR = SAVE_DIR
+        self.SAVE_DIR = SAVE_DIR
 
         SAVE_DIR_PLOTS = SAVE_DIR + '/' + 'PLOTS'
         self.SAVE_DIR_PLOTS = SAVE_DIR_PLOTS
@@ -267,12 +267,11 @@ class PARAMETERS():
                                 key_CONST =  key_CONST + '{}: {} \t\t'.format(PARAM,self.DICT[KEY][LAYER][PARAM])
 
                      
-        with open(self.save_DIR + '/CONSTANT_HYPERPARAMETERS.txt' , 'w') as file: 
+        with open(self.SAVE_DIR + '/CONSTANT_HYPERPARAMETERS.txt' , 'w') as file: 
             file.write(key_CONST)
-        with open(self.save_DIR + '/PARAMETERS_TO_TUNE.txt', 'w') as file: 
+        with open(self.SAVE_DIR + '/PARAMETERS_TO_TUNE.txt', 'w') as file: 
             file.write(key_VAR) 
  
-            
 
 
 
@@ -286,21 +285,23 @@ class PARAMETERS():
         plt.plot(np.full(shape=(np.array(self.hist).shape[0]),fill_value=0.2),'--r')
         plt.plot(np.full(shape=(np.array(self.hist).shape[0]),fill_value=0.3),'--b')
         plt.ylim((0.1,0.5))
-        plt.savefig( self.save_DIR + '/' + save_NAME + '.png')
+        plt.savefig( self.SAVE_DIR + '/PLOTS/' + save_NAME + '.png')
         
         fig2 = self.plotz()
         fig2.suptitle(plot_header)
-        plt.savefig(self.save_DIR + '/PRD_' + save_NAME + '.png')
+        plt.savefig(self.SAVE_DIR + '/PLOTS/PRD_' + save_NAME + '.png')
         plt.close('all')
-        self.keyz.append(save_NAME)
 
     def CONV_DICT_TO_INT(self,DDD):
         for KEY in list(DDD.keys()):
             for LAYER in list(DDD[KEY].keys()):
                 for PARAM in list(DDD[KEY][LAYER].keys()):    
                     if LAYER != 'flatten':
-                        if PARAM not in ['dropout','batchnorm']:
-                            DDD[KEY][LAYER][PARAM] = np.int(np.round(DDD[KEY][LAYER][PARAM]))
+                        if PARAM[:7] != 'dropout':
+                            if PARAM[:9] != 'batchnorm':
+                                DDD[KEY][LAYER][PARAM] = np.int(np.round(DDD[KEY][LAYER][PARAM]))
+                                print(PARAM)
+
         return DDD
 
 
@@ -363,7 +364,10 @@ class PARAMETERS():
         TST_INP = torch.Tensor(TST_INP)#.to(device = cuda)
         TR_OUT = torch.Tensor(TR_OUT)#.to(device = cuda)
         TST_OUT = torch.Tensor(TST_OUT)#.to(device = cuda)
+        self.TST_INP = TST_INP
+        self.TST_OUT = TST_OUT
         
+
         TRA_DSet = TensorDataset(TR_INP, TR_OUT)
         VAL_DSet = TensorDataset(TST_INP, TST_OUT)
         self.train_DL = DataLoader(TRA_DSet, batch_size=self.DICT['OTHERS']['1']['batchsize'])
@@ -371,9 +375,10 @@ class PARAMETERS():
         
         
     def GET_MODEL(self,DD):
-
+        print(DD)
         call_data_again = False
         DD = self.CONV_DICT_TO_INT(DD)    
+        print(DD)
         for KEY in  list(DD.keys()):
             if KEY is 'OTHERS':
                 key__ = list(DD['OTHERS']['1'].keys())
@@ -392,13 +397,17 @@ class PARAMETERS():
             self.Preprocess(split=220)
 
         self.DICT_TO_LIST()
-        model = Model(self.DICT,self.LIST, self.DICT['OTHERS']['1'], self.scaler, self.train_DL, self.val_DL,self.save_DIR)
+        model = Model(self.DICT,self.LIST, self.DICT['OTHERS']['1'], self.scaler, self.train_DL, self.val_DL,self.SAVE_DIR,self.EXPERIMENT_NUMBER)
         #model#.to(device = cuda)
         model.optimizer = optim.Adam(model.parameters(),lr=self.DICT['OTHERS']['1']['lrate'])
-        minloss = model.fit()
+        SAVE_NAME, __ = P_OBJ.CREATE_SAVE_NAME(DD)
+        os.mkdir(self.SAVE_DIR + SAVE_NAME)
+        
+        minloss = model.fit(SAVE_NAME)
         print(dir(model))
         model.SAVE_PLOTS(DD)
         #torch.cuda.empty_cache()
+        P_OBJ.EXPERIMENT_NUMBER = P_OBJ.EXPERIMENT_NUMBER + 1
         return {
             'loss': minloss,
             'status': STATUS_OK,
@@ -406,15 +415,41 @@ class PARAMETERS():
                 {'time_module': pickle.dumps(time.time)}
               }
   
+
+    def plotz(self):
+
+        timereal = np.array([i for i in range(50)])
+        timez = np.zeros((50,self.DICT['OTHERS']['1']['out_size']))
+        for i in range(50):
+            for j in range(self.DICT['OTHERS']['1']['out_size']):
+                timez[i,j] = i + j
+        inp,out = [self.TST_INP,self.TST_OUT]
+        
+        self.eval()
+        with torch.no_grad():
+           pred = self(inp)
+
+        fig = plt.figure(figsize=(12, 6))
+        ax1, ax2,  = fig.subplots(2, 1, )
+        bisi = out.shape[0]
+        for i in range(int(bisi/2)):
+            ax1.plot(timez[i],pred[i])
+            ax1.plot(timez[i],out[i],color='black')
+
+        for i in range(int(bisi/2)+1,2*int(bisi/2)):
+
+            ax2.plot(timez[i],pred[i])
+            ax2.plot(timez[i],out[i],color='black')
+
+        return fig
+
 print('PARAMETERS DEFINED !!!!')
 
 
-
-
 class Model(nn.Module, PARAMETERS):
-    def __init__(self, DICT,LIST, OTHERS, SCLR, TRAIN, VAL,save_DIR):
+    def __init__(self, DICT,LIST, OTHERS, SCLR, TRAIN, VAL,SAVE_DIR, EXPERIMENT_NUMBER):
         super().__init__()
-        self.save_DIR = save_DIR
+        self.SAVE_DIR = SAVE_DIR
         self.scaler = StandardScaler()
         self.LIST = LIST
         self.DICT = DICT
@@ -423,6 +458,7 @@ class Model(nn.Module, PARAMETERS):
         self.preprocess(split=216)
         self.layers = nn.ModuleList()
         self.Loss_FUNC = F.mse_loss
+        self.EXPERIMENT_NUMBER = EXPERIMENT_NUMBER
 
         for elem in self.LIST:
             key = elem[0]
@@ -467,11 +503,12 @@ class Model(nn.Module, PARAMETERS):
 
         return loss.item(), len(TR_INP)
 
-    def fit(self):
+    def fit(self,SAVE_NAME):
         self.hist = list()
         self.hist_valid = list()
         min_loss = 10
         BEST_LOSS = 5
+        BEST_CHECKPOINT_LOSS = 5
         for epoch in range(self.epoch):
             self.train()
             for TR_INP, TR_OUT in self.train_DL:
@@ -489,6 +526,16 @@ class Model(nn.Module, PARAMETERS):
                 )
             val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
             self.hist_valid.append(val_loss)
+            if epoch % 50 == 0:
+                torch.save(self.state_dict(),SAVE_NAME + '/EPOCH_' + str(epoch) + '.pth.tar')
+                is_best = val_loss < BEST_CHECKPOINT_LOSS
+                BEST_CHECKPOINT_LOSS = min(val_loss,BEST_CHECKPOINT_LOSS)
+                self.save_checkpoint({
+                                  'epoch': epoch + 1,
+                                  'state_dict': self.state_dict(),
+                                  'BEST_CHECKPOINT_LOSS': BEST_CHECKPOINT_LOSS,
+                                  'optimizer' : self.optimizer.state_dict(),
+                                }, is_best,filename = SAVE_NAME + '/BEST_IS_EPOCH_' + str(epoch) + '.pth.tar')
 
             is_best = val_loss < BEST_LOSS
             BEST_LOSS = min(val_loss,BEST_LOSS)
@@ -497,18 +544,21 @@ class Model(nn.Module, PARAMETERS):
                               'state_dict': self.state_dict(),
                               'BEST_LOSS': BEST_LOSS,
                               'optimizer' : self.optimizer.state_dict(),
-                            }, is_best)
+                            }, is_best, filename = SAVE_NAME + '/VERY_BEST_IS' + str(epoch) + '.pth.tar')
 
         return BEST_LOSS
       
-    def save_checkpoint(self,state, is_best, filename='checkpoint.pth.tar'):
+    def save_checkpoint(self,state, is_best, filename = 'checkpoint.pth.tar'):
+        dirr = self.SAVE_DIR + '/MODELS/' + str(self.EXPERIMENT_NUMBER) 
+        filename= dirr + filename
         torch.save(state, filename)
         if is_best:
-            shutil.copyfile(filename, 'model_best.pth.tar')
+            shutil.copyfile(filename, dirr + 'model_best.pth.tar')
 
 
 
 def SET_EXPERIMENT(PARAMS_TO_CHANGE=None):
+    global P_OBJ
     P_OBJ = PARAMETERS()
     P_OBJ.EXPERIMENT_NUMBER = 1
     P_OBJ.GET_DICT()
