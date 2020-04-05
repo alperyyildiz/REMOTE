@@ -7,6 +7,8 @@ import pandas as pd
 import pickle
 import time
 import shutil
+import os
+from datetime import datetime
 from torch import optim
 from sklearn import datasets
 from torch.autograd import Variable
@@ -171,23 +173,39 @@ class PARAMETERS():
 
         first_Con = True
         SAVE_DIR = ''
-        for KEY in list(self.dict.keys()):
+        try:
+            os.mkdir('/storage')
+        except:
+            pass
+        for KEY in list(self.DICT.keys()):
             if KEY != 'OTHERS':
                 SAVE_DIR = SAVE_DIR + '_' +KEY + '-'
-                for LAYER in list(self.dict[KEY].keys()):
+                for LAYER in list(self.DICT[KEY].keys()):
                     SAVE_DIR = SAVE_DIR + LAYER + '-'
-        SAVE_DIR = 'storage/' + SAVE_DIR[1:]
+        SAVE_DIR = '/storage/' + SAVE_DIR[1:]
         try: 
             os.mkdir(SAVE_DIR)
             self.save_DIR = SAVE_DIR
         except:
             pass
-        
+
         SAVE_DIR = SAVE_DIR + '/' +str(datetime.now())[:-10]
         self.save_DIR = SAVE_DIR
 
+        SAVE_DIR_PLOTS = SAVE_DIR + '/' + 'PLOTS'
+        self.SAVE_DIR_PLOTS = SAVE_DIR_PLOTS
+
+        SAVE_DIR_MODELS = SAVE_DIR + '/' + 'MODELS'
+        self.SAVE_DIR_MODELS = SAVE_DIR_MODELS
+
         try:
             os.mkdir(SAVE_DIR)
+        except:
+            pass
+
+        try:
+            os.mkdir(SAVE_DIR_PLOTS)
+            os.mkdir(SAVE_DIR_MODELS)
         except:
             pass
 
@@ -249,9 +267,9 @@ class PARAMETERS():
                                 key_CONST =  key_CONST + '{}: {} \t\t'.format(PARAM,self.DICT[KEY][LAYER][PARAM])
 
                      
-        with open('/CONSTANT_HYPERPARAMETERS.txt' , 'w') as file: 
+        with open(self.save_DIR + '/CONSTANT_HYPERPARAMETERS.txt' , 'w') as file: 
             file.write(key_CONST)
-        with open('/PARAMETERS_TO_TUNE.txt', 'w') as file: 
+        with open(self.save_DIR + '/PARAMETERS_TO_TUNE.txt', 'w') as file: 
             file.write(key_VAR) 
  
             
@@ -259,8 +277,8 @@ class PARAMETERS():
 
 
     #SAVES HIST AND PRED PLOTS
-    def SAVE_PLOTS(self):
-        save_NAME, plot_header = self.CREATE_SAVE_NAME()
+    def SAVE_PLOTS(self,DDD):
+        save_NAME, plot_header = self.CREATE_SAVE_NAME(DDD)
         fig = plt.figure(figsize=(12,6))
         fig.suptitle(plot_header)
         plt.plot(self.hist)
@@ -271,6 +289,7 @@ class PARAMETERS():
         plt.savefig( self.save_DIR + '/' + save_NAME + '.png')
         
         fig2 = self.plotz()
+        fig2.suptitle(plot_header)
         plt.savefig(self.save_DIR + '/PRD_' + save_NAME + '.png')
         plt.close('all')
         self.keyz.append(save_NAME)
@@ -352,10 +371,6 @@ class PARAMETERS():
         
         
     def GET_MODEL(self,DD):
-        print(DD)
-        print(DD)
-        print(DD)
-        print(self.DICT)
 
         call_data_again = False
         DD = self.CONV_DICT_TO_INT(DD)    
@@ -376,12 +391,13 @@ class PARAMETERS():
         if call_data_again:
             self.Preprocess(split=220)
 
-        print(self.DICT)
         self.DICT_TO_LIST()
-        model = Model(self.DICT,self.LIST, self.DICT['OTHERS']['1'], self.scaler, self.train_DL, self.val_DL)
+        model = Model(self.DICT,self.LIST, self.DICT['OTHERS']['1'], self.scaler, self.train_DL, self.val_DL,self.save_DIR)
         #model#.to(device = cuda)
         model.optimizer = optim.Adam(model.parameters(),lr=self.DICT['OTHERS']['1']['lrate'])
         minloss = model.fit()
+        print(dir(model))
+        model.SAVE_PLOTS(DD)
         #torch.cuda.empty_cache()
         return {
             'loss': minloss,
@@ -396,9 +412,9 @@ print('PARAMETERS DEFINED !!!!')
 
 
 class Model(nn.Module, PARAMETERS):
-    def __init__(self, DICT,LIST, OTHERS, SCLR, TRAIN, VAL):
+    def __init__(self, DICT,LIST, OTHERS, SCLR, TRAIN, VAL,save_DIR):
         super().__init__()
-
+        self.save_DIR = save_DIR
         self.scaler = StandardScaler()
         self.LIST = LIST
         self.DICT = DICT
@@ -452,12 +468,19 @@ class Model(nn.Module, PARAMETERS):
         return loss.item(), len(TR_INP)
 
     def fit(self):
+        self.hist = list()
+        self.hist_valid = list()
         min_loss = 10
         BEST_LOSS = 5
         for epoch in range(self.epoch):
             self.train()
             for TR_INP, TR_OUT in self.train_DL:
-                self.loss_batch(TR_INP, TR_OUT, self.optimizer)
+                losses, nums = zip(
+                    *[self.loss_batch(TR_INP, TR_OUT) for TR_INP, TR_OUT in self.val_DL]
+                )
+
+            train_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
+            self.hist.append(train_loss)
 
             self.eval()
             with torch.no_grad():
@@ -465,6 +488,7 @@ class Model(nn.Module, PARAMETERS):
                     *[self.loss_batch(TR_INP, TR_OUT) for TR_INP, TR_OUT in self.val_DL]
                 )
             val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
+            self.hist_valid.append(val_loss)
 
             is_best = val_loss < BEST_LOSS
             BEST_LOSS = min(val_loss,BEST_LOSS)
@@ -484,34 +508,16 @@ class Model(nn.Module, PARAMETERS):
 
 
 
-
-def fit(epochs, model, opt, train_dl, valid_dl):
-    min_loss = 10
-    for epoch in range(epochs):
-        model.train()
-        for xb, yb in train_dl:
-            model.loss_batch(xb, yb, opt)
-
-        model.eval()
-        with torch.no_grad():
-            losses, nums = zip(
-                *[model.loss_batch(xb, yb) for xb, yb in valid_dl]
-            )
-        val_loss = np.sum(np.multiply(losses, nums)) / np.sum(nums)
-        if val_loss < min_loss:
-            min_loss = val_loss
-        print(epoch, val_loss)
-    return min_loss
-
-
 def SET_EXPERIMENT(PARAMS_TO_CHANGE=None):
     P_OBJ = PARAMETERS()
     P_OBJ.EXPERIMENT_NUMBER = 1
     P_OBJ.GET_DICT()
     P_OBJ.GET_PARAMS_TO_CHANGE()
     P_OBJ.CREATE_SEARCH_SPACE()
+    P_OBJ.CREATE_DIR()
     P_OBJ.WRITE_CONSTANTS()
     P_OBJ.preprocess(split=220)
+
     print(P_OBJ.DICT)
     best = fmin(fn=P_OBJ.GET_MODEL,
                 space=P_OBJ.space,
